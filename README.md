@@ -566,6 +566,7 @@ references/
   failure-taxonomy.md   失败码 → 动作
   site-map.md           站点交互地图（含能力栏 / 参数确认 / 异步推送 / 提取三坑）
   protocol.md           [DBB] 协作协议
+  cookbook-comic-wechat.md  端到端：参考图生图 → ffmpeg 烤字 → 公众号「贴图(newspic)」发布（含去水印 B 方案）
 scripts/dbb/
   cli.mjs               命令面 + JSON 契约 + 生成类六步流程
   src/browser.mjs       浏览器探测 + 持久化 + cookie 登录判定
@@ -575,6 +576,11 @@ scripts/dbb/
   src/paths.mjs         状态目录布局
   src/logger.mjs        脱敏日志
   tests/sanitize.test.mjs   14 项净化闸门单测
+scripts/recipes/
+  gen_ref.mjs           参考图批量生图（角色一致性，发送前后快照差异取图）
+  bake_captions.mjs     ffmpeg 烤两行中文进图底 + 可选去水印(CLEAN=1)
+  publish_wechat_tietu.mjs  直发 draft/add 建公众号「贴图(newspic)」+ 删旧草稿
+  fonts.conf            ffmpeg 中文渲染所需的 fontconfig（另需同目录放 simhei.ttf）
 ```
 
 ## 同族项目

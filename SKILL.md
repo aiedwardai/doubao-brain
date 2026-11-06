@@ -4,7 +4,7 @@ description: 把豆包网页版（多模型可选、联网搜索、图像生成�
 license: MIT
 allowed-tools: Bash, Read, Write
 metadata:
-  version: 3.0.2
+  version: 3.1.0
   emoji: "🫘"
   requires: node>=20, network to doubao.com, Doubao account
 ---
@@ -108,6 +108,19 @@ node "<skill-root>/scripts/dbb/cli.mjs" ask \
 产物在 `files[]`（本地绝对路径）。**注意**：豆包的多模态生成可能耗时较长（可达数分钟），
 CLI 默认超时 300 秒，必要时加 `--timeout 600000`。
 
+### 参考图锁定人物（角色一致性）
+
+连环画 / 多图同角色场景：每次生图独立采样，长相漂移会"换头"。已验证做法——
+**「对话模式 + 上传参考图 + 明确保留/改变」**，**不是**「图像生成」面板（面板无参考图控件，仅头像上传 input）。
+
+- 用 `ask --attach <参考图>` 在对话里上传参考图，再写 prompt 指明「保留脸型/五官/发型/身份，重绘为 XX 风格」。
+- **取图必须用「发送前后快照差异」**：发送前记下列表，发送后只取新增且不在基准中的产物图，
+  否则会抓到常驻 UI 图 / 参考缩略图，导致多张同 MD5。
+- 批量实现见 `scripts/recipes/gen_ref.mjs`（逐张新对话 + attach + 差异取图）。
+- 角色一致性四法（按可靠度）：锁文字锚点 > 锁参考图 > 锁 seed（豆包未开放）> 后期换脸 LoRA。
+
+> 端到端（生图 → 烤字 → 发公众号贴图）流水线收在 [references/cookbook-comic-wechat.md](references/cookbook-comic-wechat.md)。
+
 ### 分析文件
 
 ```bash
@@ -172,6 +185,7 @@ node "<skill-root>/scripts/dbb/cli.mjs" ask --prompt "分析这个文件" --atta
 | `references/failure-taxonomy.md` | `ok:false` 或 `doctor` 不绿时 |
 | `references/site-map.md` | 仅诊断 / 维护用；正常流程不要读 |
 | `references/protocol.md` | 需要豆包做规划 / 审查循环时（`[DBB]` 协议） |
+| `references/cookbook-comic-wechat.md` | 端到端：参考图生图 → ffmpeg 烤字 → 公众号「贴图(newspic)」发布（含去水印 B 方案） |
 
 ## 维护者注意
 
