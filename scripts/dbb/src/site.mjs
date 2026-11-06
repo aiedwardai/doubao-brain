@@ -639,25 +639,61 @@ export async function readCapabilities(page) {
 /** 当前选中的能力（豆包用高亮/勾选标记） */
 export async function readActiveCapability(page) {
   return page.evaluate(() => {
-    const known = ["对话", "视频生成", "图像生成", "帮我写作", "音乐生成", "AI 播客", "录音转写"];
-    // 已选中的能力通常是「标签」形态（带 × 号），或带高亮类
-    const tagged = [...document.querySelectorAll("*")]
-      .filter((e) => {
-        const t = (e.innerText || "").trim();
-        return known.some((k) => t === `${k} ×` || t === `${k}×` || t.startsWith(`${k}\n×`));
-      })
-      .map((e) => (e.innerText || "").trim().replace(/\s*×\s*$/, ""));
-    if (tagged.length) return tagged[tagged.length - 1];
-    // 兜底：高亮类
-    const active = [...document.querySelectorAll("*")]
-      .filter((e) => {
-        const cls = typeof e.className === "string" ? e.className : "";
-        const t = (e.innerText || "").trim();
-        return known.includes(t) && /active|selected|primary|bg-\[|bg-primary/i.test(cls);
-      })
-      .map((e) => (e.innerText || "").trim());
-    return active[active.length - 1] ?? null;
+    const KNOWN = ["对话", "工作", "视频生成", "图像生成", "帮我写作", "音乐生成", "AI 播客", "录音转写"];
+    // ① 优先：输入区参数栏。切换生成能力后会显示「图像生成 模型 … / 视频生成 时长 …」，
+    //    其首词即当前能力名（最可靠）。
+    const actions = document.querySelector('[class*="guidance-input-actions"]');
+    if (actions) {
+      const t = (actions.innerText || "").replace(/\s+/g, " ").trim();
+      for (const k of KNOWN) if (t.startsWith(k)) return k;
+    }
+    // ② 次选：输入区「当前模式」下拉按钮（含 <img>，文案即当前模式名）
+    const MODE_RE = /^(对话|工作|图像生成|视频生成|帮我写作|音乐生成|AI 播客|录音转写)$/;
+    const btn = [...document.querySelectorAll("button")].find(
+      (b) => MODE_RE.test((b.innerText || "").trim()) && b.querySelector("img") && b.getClientRects().length > 0
+    );
+    if (btn) return (btn.innerText || "").trim();
+    // ③ 兜底：页面里首个精确命中的能力标签
+    const hit = [...document.querySelectorAll("*")]
+      .map((e) => (e.innerText || "").replace(/\s+/g, " ").trim())
+      .find((t) => KNOWN.includes(t));
+    return hit ?? null;
   });
+}
+
+/**
+ * 打开「当前模式」下拉菜单。
+ *
+ * 豆包新版把生成能力（图像/视频/音乐/播客/写作/转写）收进输入区那个带 <img> 的
+ * 「当前模式」按钮下拉里（文案形如「对话」）。菜单没开时页面上根本不存在能力项文字，
+ * 直接按文字点会 NOT_FOUND，所以必须先点开它。
+ */
+export async function openCapabilityMenu(page) {
+  const MODE_RE = /^(对话|工作|图像生成|视频生成|帮我写作|音乐生成|AI 播客|录音转写)$/;
+  const res = await page.evaluate((src) => {
+    const re = new RegExp(src);
+    const btn = [...document.querySelectorAll("button")].find(
+      (b) => re.test((b.innerText || "").trim()) && b.querySelector("img") && b.getClientRects().length > 0
+    );
+    if (!btn) return { ok: false };
+    btn.click();
+    return { ok: true, text: (btn.innerText || "").trim() };
+  }, MODE_RE.source);
+  await page.waitForTimeout(1500);
+  return res;
+}
+
+/** 按精确文案点能力项（菜单已展开时有效） */
+async function clickCapabilityItem(page, label) {
+  return page.evaluate((l) => {
+    const hits = [...document.querySelectorAll("button,[role=button],[class*='cursor-pointer'],div,span")]
+      .filter((e) => (e.innerText || "").trim() === l && e.getBoundingClientRect().width > 8);
+    if (!hits.length) return { ok: false };
+    const el = hits[hits.length - 1];
+    const target = el.closest("button,[role=button],[class*='cursor-pointer']") ?? el;
+    target.click();
+    return { ok: true };
+  }, label);
 }
 
 /**
@@ -673,17 +709,13 @@ export async function setCapability(page, capability) {
   const before = await readActiveCapability(page);
   if (before === capability) return { ok: true, switched: false, before, after: before };
 
-  const clicked = await page.evaluate((label) => {
-    const hits = [...document.querySelectorAll("button,[role=button],[class*='cursor-pointer'],div,span")]
-      .filter((e) => (e.innerText || "").trim() === label && e.getBoundingClientRect().width > 8);
-    if (!hits.length) return { ok: false, reason: "NOT_FOUND" };
-    // 取最内层元素，再向上找可点击祖先
-    const el = hits[hits.length - 1];
-    const target = el.closest("button,[role=button],[class*='cursor-pointer']") ?? el;
-    target.click();
-    return { ok: true };
-  }, capability);
-
+  // 豆包新版的生成能力收在「当前模式」下拉里：先尝试直接点（菜单可能已经展开），
+  // 找不到则先点开下拉再点。
+  let clicked = await clickCapabilityItem(page, capability);
+  if (!clicked.ok) {
+    const opened = await openCapabilityMenu(page);
+    if (opened.ok) clicked = await clickCapabilityItem(page, capability);
+  }
   if (!clicked.ok) return { ok: false, reason: "NOT_FOUND", message: `能力栏里没有「${capability}」` };
   await page.waitForTimeout(3000);
   const after = await readActiveCapability(page);

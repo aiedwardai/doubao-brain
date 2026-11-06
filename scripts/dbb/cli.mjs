@@ -393,15 +393,18 @@ async function cmdAsk() {
       return fail("POPUP_BLOCKING", "页面弹窗无法自动关闭（未命中白名单关闭控件），请人工查看截图或浏览器窗口后重试。", { dialogs: dlg });
     }
 
+    // 输入框是 TipTap，登录后有一段水合（hydration）时间才挂载 contenteditable。
+    // 单次 pageState 检测容易在页面刚加载时漏判（getClientRects 为零），因此改为轮询等待。
     let threadLost = false;
-    if (!st.hasEditor) {
-      if (targetUrl !== site.SITE_URL) {
-        threadLost = true;
-        await site.gotoSite(page, site.SITE_URL);
-        st = await site.pageState(page);
-      }
-      if (!st.hasEditor) return fail("COMPOSER_NOT_FOUND", "页面上找不到输入框（可能改版或登录失效）。", { state: st });
+    let we = await site.waitForEditor(page, { timeoutMs: 90000, pollMs: 2000 });
+    if (!we.ok && targetUrl !== site.SITE_URL) {
+      log("info", "深链页面未找到输入框，回退到主对话页重试");
+      threadLost = true;
+      await site.gotoSite(page, site.SITE_URL);
+      we = await site.waitForEditor(page, { timeoutMs: 90000, pollMs: 2000 });
     }
+    if (!we.ok) return fail("COMPOSER_NOT_FOUND", "页面上找不到输入框（可能改版或登录失效）。", { state: we.state });
+    st = we.state;
 
     // --thread new：显式点「新对话」（豆包首页会恢复上次会话，不能只靠 goto）
     if (threadArg === "new") {
